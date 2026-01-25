@@ -1,0 +1,32 @@
+# 核心依赖
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+feedparser>=6.0.10
+
+# 数据库
+sqlalchemy>=2.0.0
+# sqlite3 是 Python 内置模块，无需安装
+
+# AI 分析
+openai>=1.0.0
+anthropic>=0.18.0  # Claude API
+
+# 配置管理
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# 工具库
+pytz>=2023.3
+schedule>=1.2.0
+loguru>=0.7.0
+
+# Web 服务
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+jinja2>=3.1.2
+python-multipart>=0.0.6
+
+# 可选：其他新闻源
+newspaper3k>=0.2.8
+readability-lxml>=0.8.1

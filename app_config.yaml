@@ -1,0 +1,99 @@
+# 新闻抓取与分析服务配置文件
+
+# 应用基础配置
+app:
+  name: "新闻分析服务"
+  timezone: "Asia/Shanghai"
+  log_level: "INFO"
+
+# 数据库配置
+database:
+  type: "sqlite"  # sqlite 或 postgresql
+  path: "data/news.db"  # SQLite 数据库路径
+  # PostgreSQL 配置（如果使用）
+  # host: "localhost"
+  # port: 5432
+  # user: "your_user"
+  # password: "your_password"
+  # dbname: "news_db"
+
+# 新闻源配置
+news_sources:
+  # 国内新闻源
+  domestic:
+    - name: "新浪新闻"
+      type: "rss"
+      url: "https://news.sina.com.cn/roll/index.d.html"
+      enabled: true
+    
+    - name: "新华网"
+      type: "rss"
+      url: "http://www.xinhuanet.com/politics/news_politics.xml"
+      enabled: true
+    
+    - name: "人民网"
+      type: "rss"
+      url: "http://www.people.com.cn/rss/politics.xml"
+      enabled: true
+    
+    - name: "澎湃新闻"
+      type: "rss"
+      url: "https://www.thepaper.cn/feed_web_channel_26932"
+      enabled: true
+
+  # 国际新闻源
+  international:
+    - name: "BBC News"
+      type: "rss"
+      url: "http://feeds.bbci.co.uk/news/rss.xml"
+      enabled: true
+    
+    - name: "Reuters"
+      type: "rss"
+      url: "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best"
+      enabled: true
+    
+    - name: "CNN"
+      type: "rss"
+      url: "http://rss.cnn.com/rss/edition.rss"
+      enabled: true
+    
+    - name: "The Guardian"
+      type: "rss"
+      url: "https://www.theguardian.com/world/rss"
+      enabled: true
+
+# 抓取配置
+crawler:
+  request_interval: 2  # 请求间隔（秒）
+  timeout: 30  # 请求超时（秒）
+  max_articles_per_source: 50  # 每个源最多抓取文章数
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+# AI 分析配置
+ai:
+  provider: "openai"  # openai, anthropic, deepseek
+  api_key: ""  # 从环境变量 AI_API_KEY 读取
+  model: "gpt-4o-mini"  # 模型名称
+  base_url: ""  # 自定义 API 地址（可选）
+  temperature: 0.7
+  max_tokens: 2000
+  timeout: 60
+
+# 分析配置
+analysis:
+  enabled: true
+  language: "中文"
+  max_articles_per_analysis: 20  # 每次分析的文章数量
+  analysis_interval: 3600  # 分析间隔（秒），1小时
+
+# 服务配置
+service:
+  fetch_interval: 1800  # 抓取间隔（秒），30分钟
+  enable_scheduler: true  # 是否启用定时任务
+
+# Web 服务配置
+web:
+  enabled: true  # 是否启用 Web 服务
+  host: "0.0.0.0"  # 监听地址
+  port: 8000  # 监听端口
