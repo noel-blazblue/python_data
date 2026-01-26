@@ -21,10 +21,12 @@ database:
 news_sources:
   # 国内新闻源
   domestic:
+    # 新浪新闻 - 暂时禁用，原 URL 不是有效的 RSS feed
+    # 如需使用，请查找新浪新闻的官方 RSS feed URL
     - name: "新浪新闻"
       type: "rss"
       url: "https://news.sina.com.cn/roll/index.d.html"
-      enabled: true
+      enabled: false
     
     - name: "新华网"
       type: "rss"

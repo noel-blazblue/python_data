@@ -41,10 +41,72 @@ class NewsCrawler:
         articles = []
         try:
             logger.info(f"正在抓取 RSS: {source_name} - {url}")
+            
+            # 先检查 URL 响应，验证是否为有效的 RSS feed
+            try:
+                response = self.session.get(url, timeout=self.timeout, allow_redirects=True)
+                response.raise_for_status()
+                
+                # 检查 Content-Type
+                content_type = response.headers.get('Content-Type', '').lower()
+                if 'html' in content_type and 'xml' not in content_type and 'rss' not in content_type:
+                    logger.error(
+                        f"❌ {source_name} 的 URL 不是有效的 RSS feed！"
+                        f" Content-Type: {content_type}。"
+                        f" 请检查 URL 是否正确，或该网站可能不提供 RSS 订阅。"
+                    )
+                    return articles
+                
+            except requests.RequestException as e:
+                logger.error(f"❌ 无法访问 {source_name} 的 URL: {e}")
+                return articles
+            
+            # 解析 RSS feed
             feed = feedparser.parse(url)
             
+            # 检查是否有解析错误
             if feed.bozo and feed.bozo_exception:
-                logger.warning(f"RSS 解析错误: {feed.bozo_exception}")
+                error_msg = str(feed.bozo_exception)
+                
+                # 区分致命错误和非致命警告
+                # 编码相关的警告（如 us-ascii vs utf-8）通常是非致命的
+                is_fatal_error = True
+                non_fatal_keywords = [
+                    'us-ascii', 'utf-8', 'encoding', 'charset',
+                    'character encoding', 'declared as', 'parsed as'
+                ]
+                
+                error_lower = error_msg.lower()
+                if any(keyword in error_lower for keyword in non_fatal_keywords):
+                    # 编码警告，如果仍有文章条目，则继续处理
+                    if feed.entries:
+                        logger.warning(
+                            f"⚠️  {source_name} RSS feed 有编码警告（非致命）: {error_msg}\n"
+                            f"   继续处理，已找到 {len(feed.entries)} 篇文章"
+                        )
+                        is_fatal_error = False
+                    else:
+                        logger.error(
+                            f"❌ {source_name} RSS feed 编码错误且无文章条目: {error_msg}"
+                        )
+                else:
+                    # 其他类型的错误，视为致命错误
+                    logger.error(
+                        f"❌ RSS 解析失败 ({source_name}): {error_msg}\n"
+                        f"   可能原因：\n"
+                        f"   1. URL 不是有效的 RSS/Atom feed\n"
+                        f"   2. Feed 格式错误或损坏\n"
+                        f"   3. 网站返回了 HTML 页面而非 XML feed\n"
+                        f"   建议：检查 URL 是否正确，或联系网站管理员获取正确的 RSS feed 地址"
+                    )
+                
+                # 只有致命错误或无文章时才返回空列表
+                if is_fatal_error or not feed.entries:
+                    return articles
+            
+            # 检查是否成功解析到文章
+            if not feed.entries:
+                logger.warning(f"⚠️  {source_name} 的 RSS feed 没有找到任何文章条目")
                 return articles
             
             for entry in feed.entries[:self.max_articles]:
