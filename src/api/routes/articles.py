@@ -125,21 +125,30 @@ async def get_article(
 
 @router.get("/sources/list")
 async def get_sources(db: Session = Depends(get_db)):
-    """获取所有新闻源列表"""
+    """获取所有新闻源列表（去重）"""
     try:
         from src.db.models import NewsArticle
-        from sqlalchemy import distinct
+        from sqlalchemy import distinct, func
         
+        # 使用 group_by 确保去重，并获取每个源的类型
         sources = db.query(
-            distinct(NewsArticle.source),
+            NewsArticle.source,
+            NewsArticle.source_type
+        ).group_by(
+            NewsArticle.source,
             NewsArticle.source_type
         ).all()
         
+        # 进一步去重：如果同一个源有多个类型，只保留第一个
+        seen = set()
+        unique_sources = []
+        for source, source_type in sources:
+            if source not in seen:
+                seen.add(source)
+                unique_sources.append({"name": source, "type": source_type})
+        
         return {
-            "sources": [
-                {"name": s[0], "type": s[1]}
-                for s in sources
-            ]
+            "sources": unique_sources
         }
     except Exception as e:
         logger.error(f"获取新闻源列表失败: {e}")
@@ -148,17 +157,23 @@ async def get_sources(db: Session = Depends(get_db)):
 
 @router.get("/categories/list")
 async def get_categories(db: Session = Depends(get_db)):
-    """获取所有分类列表"""
+    """获取所有分类列表（去重）"""
     try:
         from src.db.models import NewsArticle
         from sqlalchemy import distinct
         
         categories = db.query(
             distinct(NewsArticle.category)
-        ).filter(NewsArticle.category.isnot(None)).all()
+        ).filter(
+            NewsArticle.category.isnot(None)
+        ).all()
+        
+        # 去重并过滤空值
+        unique_categories = list(set([c[0] for c in categories if c[0]]))
+        unique_categories.sort()  # 排序以便显示
         
         return {
-            "categories": [c[0] for c in categories if c[0]]
+            "categories": unique_categories
         }
     except Exception as e:
         logger.error(f"获取分类列表失败: {e}")
