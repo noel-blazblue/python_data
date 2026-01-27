@@ -38,9 +38,12 @@ news_sources:
       url: "http://www.people.com.cn/rss/politics.xml"
       enabled: true
     
+    # 澎湃新闻 - 使用第三方 RSS 聚合源
+    # 原 URL (https://www.thepaper.cn/feed_web_channel_26932) 返回 HTML 而非 RSS feed
+    # 如果此 URL 不可用，可以尝试查找澎湃新闻的官方 RSS feed 或暂时禁用
     - name: "澎湃新闻"
       type: "rss"
-      url: "https://www.thepaper.cn/feed_web_channel_26932"
+      url: "https://feedx.net/rss/thepaper.xml"
       enabled: true
 
   # 国际新闻源
@@ -50,10 +53,13 @@ news_sources:
       url: "http://feeds.bbci.co.uk/news/rss.xml"
       enabled: true
     
+    # Reuters - 尝试使用 feeds.reuters.com 的 RSS feed
+    # 主站点 (reuters.com) 可能要求认证，使用 feeds 子域名
+    # 如果此 URL 不可用，可以暂时禁用或查找其他可用的 Reuters RSS feed
     - name: "Reuters"
       type: "rss"
-      url: "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best"
-      enabled: true
+      url: "http://feeds.reuters.com/reuters/worldNews"
+      enabled: false
     
     - name: "CNN"
       type: "rss"
