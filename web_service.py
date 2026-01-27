@@ -510,6 +510,7 @@ async def get_articles(
     offset: int = 0,
     source: Optional[str] = None,
     source_type: Optional[str] = None,
+    category: Optional[str] = None,
     analyzed: Optional[str] = None,
     search: Optional[str] = None,
     sort_by: str = "published_at",
@@ -540,6 +541,9 @@ async def get_articles(
             
             if source_type:
                 query = query.filter(NewsArticle.source_type == source_type)
+            
+            if category:
+                query = query.filter(NewsArticle.category == category)
             
             if analyzed is not None:
                 # 处理字符串 "true"/"false"
@@ -629,6 +633,29 @@ async def get_sources():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/categories")
+async def get_categories():
+    """获取所有分类列表"""
+    try:
+        session = db_manager.get_session()
+        try:
+            from database import NewsArticle
+            from sqlalchemy import distinct
+            
+            categories = session.query(
+                distinct(NewsArticle.category)
+            ).filter(NewsArticle.category.isnot(None)).all()
+            
+            return {
+                "categories": [c[0] for c in categories if c[0]]
+            }
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"获取分类列表失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/analyses")
 async def get_analyses(limit: int = 20, offset: int = 0):
     """获取分析结果列表"""
@@ -674,6 +701,7 @@ async def news_list_page(
     limit: int = 20,
     source: Optional[str] = None,
     source_type: Optional[str] = None,
+    category: Optional[str] = None,
     analyzed: Optional[str] = None,
     search: Optional[str] = None,
     sort_by: str = "published_at",
@@ -969,11 +997,23 @@ async def news_list_page(
                         <input type="text" id="search" placeholder="搜索标题或摘要..." value="">
                     </div>
                     <div class="filter-group">
+                        <label>新闻源</label>
+                        <select id="source">
+                            <option value="">全部</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
                         <label>来源类型</label>
                         <select id="source_type">
                             <option value="">全部</option>
                             <option value="domestic">国内</option>
                             <option value="international">国际</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>分类</label>
+                        <select id="category">
+                            <option value="">全部</option>
                         </select>
                     </div>
                     <div class="filter-group">
@@ -1015,13 +1055,44 @@ async def news_list_page(
             let currentPage = 1;
             const pageSize = 20;
             
+            // 加载筛选选项数据
+            async function loadFilterOptions() {
+                try {
+                    // 加载新闻源列表
+                    const sourcesResponse = await fetch('/api/sources');
+                    const sourcesData = await sourcesResponse.json();
+                    const sourceSelect = document.getElementById('source');
+                    sourcesData.sources.forEach(s => {
+                        const option = document.createElement('option');
+                        option.value = s.name;
+                        option.textContent = s.name;
+                        sourceSelect.appendChild(option);
+                    });
+                    
+                    // 加载分类列表
+                    const categoriesResponse = await fetch('/api/categories');
+                    const categoriesData = await categoriesResponse.json();
+                    const categorySelect = document.getElementById('category');
+                    categoriesData.categories.forEach(c => {
+                        const option = document.createElement('option');
+                        option.value = c;
+                        option.textContent = c;
+                        categorySelect.appendChild(option);
+                    });
+                } catch (error) {
+                    console.error('加载筛选选项失败:', error);
+                }
+            }
+            
             // 从 URL 参数获取初始值
             function getUrlParams() {
                 const params = new URLSearchParams(window.location.search);
                 return {
                     page: parseInt(params.get('page')) || 1,
                     search: params.get('search') || '',
+                    source: params.get('source') || '',
                     source_type: params.get('source_type') || '',
+                    category: params.get('category') || '',
                     analyzed: params.get('analyzed') || '',
                     sort_by: params.get('sort_by') || 'published_at',
                     order: params.get('order') || 'desc'
@@ -1029,11 +1100,14 @@ async def news_list_page(
             }
             
             // 初始化
-            function init() {
+            async function init() {
+                await loadFilterOptions();
                 const params = getUrlParams();
                 currentPage = params.page;
                 document.getElementById('search').value = params.search;
+                document.getElementById('source').value = params.source;
                 document.getElementById('source_type').value = params.source_type;
+                document.getElementById('category').value = params.category;
                 document.getElementById('analyzed').value = params.analyzed;
                 document.getElementById('sort_by').value = params.sort_by;
                 document.getElementById('order').value = params.order;
@@ -1047,7 +1121,9 @@ async def news_list_page(
                 container.innerHTML = '<div class="loading">加载中...</div>';
                 
                 const search = document.getElementById('search').value;
+                const source = document.getElementById('source').value;
                 const sourceType = document.getElementById('source_type').value;
+                const category = document.getElementById('category').value;
                 const analyzed = document.getElementById('analyzed').value;
                 const sortBy = document.getElementById('sort_by').value;
                 const order = document.getElementById('order').value;
@@ -1060,7 +1136,9 @@ async def news_list_page(
                     order: order
                 });
                 if (search) params.set('search', search);
+                if (source) params.set('source', source);
                 if (sourceType) params.set('source_type', sourceType);
+                if (category) params.set('category', category);
                 if (analyzed) params.set('analyzed', analyzed);
                 window.history.pushState({}, '', '/news?' + params.toString());
                 
@@ -1143,7 +1221,9 @@ async def news_list_page(
             // 重置过滤器
             function resetFilters() {
                 document.getElementById('search').value = '';
+                document.getElementById('source').value = '';
                 document.getElementById('source_type').value = '';
+                document.getElementById('category').value = '';
                 document.getElementById('analyzed').value = '';
                 document.getElementById('sort_by').value = 'published_at';
                 document.getElementById('order').value = 'desc';

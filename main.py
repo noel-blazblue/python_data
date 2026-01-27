@@ -10,10 +10,12 @@ from datetime import datetime
 from loguru import logger
 import schedule
 from dotenv import load_dotenv
+import pytz
 
 from database import DatabaseManager
 from news_crawler import NewsCrawler
 from ai_analyzer import AIAnalyzer
+from fetcher import DataFetcher
 
 # 加载环境变量
 load_dotenv()
@@ -45,8 +47,12 @@ class NewsService:
         self.db = DatabaseManager(config_path)
         self.crawler = NewsCrawler(config_path)
         self.analyzer = AIAnalyzer(config_path)
+
+        # 读取应用时区（用于平台热榜的抓取时间）
+        app_config = self.config.get('app', {})
+        self.timezone = pytz.timezone(app_config.get('timezone', 'Asia/Shanghai'))
         
-        # 获取配置
+        # 获取服务配置
         service_config = self.config.get('service', {})
         self.fetch_interval = service_config.get('fetch_interval', 1800)  # 30分钟
         self.enable_scheduler = service_config.get('enable_scheduler', True)
@@ -55,6 +61,13 @@ class NewsService:
         self.analysis_enabled = analysis_config.get('enabled', True)
         self.analysis_interval = analysis_config.get('analysis_interval', 3600)  # 1小时
         self.max_articles_per_analysis = analysis_config.get('max_articles_per_analysis', 20)
+
+        # 热榜平台配置 & 获取器
+        platforms_config = self.config.get('platforms', {})
+        self.platforms_enabled = platforms_config.get('enabled', False)
+        self.platform_sources = platforms_config.get('sources', []) or []
+        # 如需代理/API 自定义，后续可从配置中读取，这里先使用默认值
+        self.platform_fetcher = DataFetcher()
         
         logger.info("新闻服务初始化完成")
     
@@ -62,6 +75,7 @@ class NewsService:
         """抓取新闻"""
         logger.info("开始抓取新闻...")
         try:
+            # 1. 抓取 RSS 新闻源
             articles = self.crawler.crawl_all_sources()
             
             saved_count = 0
@@ -78,12 +92,94 @@ class NewsService:
                 except Exception as e:
                     logger.error(f"保存文章失败: {e}")
                     continue
+
+            # 2. 抓取热榜平台数据（如果启用）
+            platform_saved = self.fetch_platform_hotlists()
+            total_saved = saved_count + platform_saved
             
-            logger.info(f"成功保存 {saved_count} 篇新文章")
-            return saved_count
+            logger.info(
+                f"成功保存 {total_saved} 篇新记录 "
+                f"(RSS: {saved_count} 篇, 热榜平台: {platform_saved} 篇)"
+            )
+            return total_saved
         
         except Exception as e:
             logger.error(f"抓取新闻失败: {e}")
+            return 0
+
+    def fetch_platform_hotlists(self) -> int:
+        """抓取热榜平台数据并写入数据库"""
+        if not self.platforms_enabled:
+            logger.info("热榜平台抓取已禁用（platforms.enabled = false）")
+            return 0
+
+        if not self.platform_sources:
+            logger.info("未配置任何热榜平台（platforms.sources 为空）")
+            return 0
+
+        logger.info("开始抓取热榜平台数据...")
+
+        # 构造平台 ID 列表：(平台ID, 显示名称)
+        ids_list = []
+        for s in self.platform_sources:
+            platform_id = s.get('id')
+            if not platform_id:
+                continue
+            name = s.get('name', platform_id)
+            ids_list.append((platform_id, name))
+
+        if not ids_list:
+            logger.info("热榜平台 ID 列表为空，跳过抓取")
+            return 0
+
+        try:
+            results, id_to_name, failed_ids = self.platform_fetcher.crawl_websites(
+                ids_list=ids_list,
+                request_interval=100,  # 默认 100ms 左右的间隔即可
+            )
+
+            saved_count = 0
+            now = datetime.now(self.timezone)
+
+            for platform_id, items in results.items():
+                source_name = id_to_name.get(platform_id, platform_id)
+
+                for title, info in items.items():
+                    url = info.get("mobileUrl") or info.get("url") or ""
+                    if not url:
+                        continue
+
+                    article_data = {
+                        "title": title,
+                        "summary": None,
+                        "content": None,
+                        "url": url,
+                        "source": source_name,
+                        # 热榜平台归类为国内新闻源
+                        "source_type": "domestic",
+                        "published_at": None,
+                        "crawled_at": now,
+                        "language": "zh",
+                        "category": "hot_platform",
+                        "tags": platform_id,
+                    }
+
+                    try:
+                        saved_article = self.db.add_article(article_data)
+                        if saved_article:
+                            saved_count += 1
+                    except Exception as e:
+                        logger.error(f"保存热榜数据失败 ({source_name}): {e}")
+                        continue
+
+            if failed_ids:
+                logger.warning(f"部分热榜平台抓取失败: {failed_ids}")
+
+            logger.info(f"热榜平台数据抓取完成，成功保存 {saved_count} 条记录")
+            return saved_count
+
+        except Exception as e:
+            logger.error(f"抓取热榜平台数据失败: {e}")
             return 0
     
     def analyze_news(self):
