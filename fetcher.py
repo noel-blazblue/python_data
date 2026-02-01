@@ -14,23 +14,11 @@ import random
 import time
 from typing import Dict, List, Tuple, Optional, Union
 
-import requests
+from src.clients.newsnow import NewsNowClient
 
 
 class DataFetcher:
     """数据获取器"""
-
-    # 默认 API 地址
-    DEFAULT_API_URL = "https://newsnow.busiyi.world/api/s"
-
-    # 默认请求头
-    DEFAULT_HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Connection": "keep-alive",
-        "Cache-Control": "no-cache",
-    }
 
     def __init__(
         self,
@@ -42,10 +30,12 @@ class DataFetcher:
 
         Args:
             proxy_url: 代理服务器 URL（可选）
-            api_url: API 基础 URL（可选，默认使用 DEFAULT_API_URL）
+            api_url: API 基础 URL（可选）
         """
-        self.proxy_url = proxy_url
-        self.api_url = api_url or self.DEFAULT_API_URL
+        self.client = NewsNowClient(
+            base_url=api_url,
+            proxy_url=proxy_url,
+        )
 
     def fetch_data(
         self,
@@ -72,47 +62,16 @@ class DataFetcher:
             id_value = id_info
             alias = id_value
 
-        url = f"{self.api_url}?id={id_value}&latest"
-
-        proxies = None
-        if self.proxy_url:
-            proxies = {"http": self.proxy_url, "https": self.proxy_url}
-
-        retries = 0
-        while retries <= max_retries:
-            try:
-                response = requests.get(
-                    url,
-                    proxies=proxies,
-                    headers=self.DEFAULT_HEADERS,
-                    timeout=10,
-                )
-                response.raise_for_status()
-
-                data_text = response.text
-                data_json = json.loads(data_text)
-
-                status = data_json.get("status", "未知")
-                if status not in ["success", "cache"]:
-                    raise ValueError(f"响应状态异常: {status}")
-
-                status_info = "最新数据" if status == "success" else "缓存数据"
-                print(f"获取 {id_value} 成功（{status_info}）")
-                return data_text, id_value, alias
-
-            except Exception as e:
-                retries += 1
-                if retries <= max_retries:
-                    base_wait = random.uniform(min_retry_wait, max_retry_wait)
-                    additional_wait = (retries - 1) * random.uniform(1, 2)
-                    wait_time = base_wait + additional_wait
-                    print(f"请求 {id_value} 失败: {e}. {wait_time:.2f}秒后重试...")
-                    time.sleep(wait_time)
-                else:
-                    print(f"请求 {id_value} 失败: {e}")
-                    return None, id_value, alias
-
-        return None, id_value, alias
+        response = self.client.get_hotlist_raw(
+            platform_id=id_value,
+            use_latest=True,
+        )
+        if response:
+            data = json.loads(response)
+            status = data.get("status", "未知")
+            status_info = "最新数据" if status == "success" else "缓存数据"
+            print(f"获取 {id_value} 成功（{status_info}）")
+        return (response, id_value, alias) if response else (None, id_value, alias)
 
     def crawl_websites(
         self,

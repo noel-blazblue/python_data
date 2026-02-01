@@ -6,33 +6,21 @@ import random
 import time
 from typing import Dict, List, Tuple, Optional, Union
 from datetime import datetime
-import requests
-from loguru import logger
 import pytz
+from loguru import logger
 
 from src.crawlers.base import BaseCrawler
+from src.clients.newsnow import NewsNowClient
 from src.core.exceptions import CrawlerException
 
 
 class PlatformCrawler(BaseCrawler):
     """平台热榜抓取器"""
-    
-    # 默认 API 地址
-    DEFAULT_API_URL = "https://newsnow.busiyi.world/api/s"
-    
-    # 默认请求头
-    DEFAULT_HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Connection": "keep-alive",
-        "Cache-Control": "no-cache",
-    }
-    
+
     def __init__(self, config, proxy_url: Optional[str] = None, api_url: Optional[str] = None):
         """
         初始化平台抓取器
-        
+
         Args:
             config: 配置对象（Settings）
             proxy_url: 代理服务器 URL（可选）
@@ -40,9 +28,11 @@ class PlatformCrawler(BaseCrawler):
         """
         self.config = config
         self.timezone = config.app.timezone_obj
-        self.proxy_url = proxy_url
-        self.api_url = api_url or self.DEFAULT_API_URL
-    
+        self.client = NewsNowClient(
+            base_url=api_url,
+            proxy_url=proxy_url,
+        )
+
     def fetch_data(
         self,
         id_info: Union[str, Tuple[str, str]],
@@ -52,13 +42,13 @@ class PlatformCrawler(BaseCrawler):
     ) -> Tuple[Optional[str], str, str]:
         """
         获取指定平台数据，支持重试
-        
+
         Args:
             id_info: 平台ID 或 (平台ID, 别名) 元组
-            max_retries: 最大重试次数
+            max_retries: 最大重试次数（传入 client，本次调用忽略）
             min_retry_wait: 最小重试等待时间（秒）
             max_retry_wait: 最大重试等待时间（秒）
-            
+
         Returns:
             (响应文本, 平台ID, 别名) 元组，失败时响应文本为 None
         """
@@ -67,46 +57,12 @@ class PlatformCrawler(BaseCrawler):
         else:
             id_value = id_info
             alias = id_value
-        
-        url = f"{self.api_url}?id={id_value}&latest"
-        
-        proxies = None
-        if self.proxy_url:
-            proxies = {"http": self.proxy_url, "https": self.proxy_url}
-        
-        retries = 0
-        while retries <= max_retries:
-            try:
-                response = requests.get(
-                    url,
-                    proxies=proxies,
-                    headers=self.DEFAULT_HEADERS,
-                    timeout=10,
-                )
-                response.raise_for_status()
-                
-                data_text = response.text
-                data_json = json.loads(data_text)
-                
-                status = data_json.get("status", "未知")
-                if status not in ["success", "cache"]:
-                    raise ValueError(f"响应状态异常: {status}")
-                
-                return data_text, id_value, alias
-            
-            except Exception as e:
-                retries += 1
-                if retries <= max_retries:
-                    base_wait = random.uniform(min_retry_wait, max_retry_wait)
-                    additional_wait = (retries - 1) * random.uniform(1, 2)
-                    wait_time = base_wait + additional_wait
-                    logger.debug(f"请求 {id_value} 失败: {e}. {wait_time:.2f}秒后重试...")
-                    time.sleep(wait_time)
-                else:
-                    logger.error(f"请求 {id_value} 失败: {e}")
-                    return None, id_value, alias
-        
-        return None, id_value, alias
+
+        response = self.client.get_hotlist_raw(
+            platform_id=id_value,
+            use_latest=True,
+        )
+        return (response, id_value, alias) if response else (None, id_value, alias)
     
     def crawl_websites(
         self,
